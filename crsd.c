@@ -24,7 +24,7 @@ int active_rooms = 0;
 
 
 void *process_command(void *s);
-void *run_room(void *r);
+void run_room(int room_num);
 void create_room(int port, char *name);
 
 
@@ -69,8 +69,10 @@ int main(int argc, char** argv)
 		pthread_t thread_id;
 		void *s = &new_socket;
 		pthread_create(&thread_id, NULL, process_command, s);
-		pthread_join(thread_id, NULL);
+		//pthread_join(thread_id, NULL);
 	}
+	
+	close(server_fd);
 	
     return 0;
 }
@@ -101,6 +103,7 @@ void *process_command(void *s) {
 	
 	if (strncmp(command, "CREATE", 6) == 0) {
 		int exists = 0;
+		printf("%d\n", active_rooms);
 		for (int i = 0; i < active_rooms; ++i) {
 			if (strncmp(rooms[i].name, param, 10) == 0) {
 				reply.status = FAILURE_ALREADY_EXISTS;
@@ -118,49 +121,52 @@ void *process_command(void *s) {
 				reply.port = rooms[active_rooms - 1].port + 1;
 			}
 			
-			create_room(reply.port, param);
-			
-			reply.num_member = 1;
+			reply.num_member = 0;
 			reply.status = SUCCESS;
 			send(sockfd, (char *)&reply, sizeof(struct Reply), 0);
 			
-			pthread_t thread_id;
-			void *r = &active_rooms;
-			pthread_create(&thread_id, NULL, run_room, r);
+			create_room(reply.port, param);
 			
 		}
 	}
 	else if (strncmp(command, "JOIN", 4) == 0) {
+		int exists = 0;
+		for (int i = 0; i < active_rooms; ++i) {
+			if (strncmp(rooms[i].name, param, 10) == 0) {
+				rooms[i].members++;
+				
+				reply.status = SUCCESS;
+				reply.port = rooms[i].port;
+				reply.num_member = rooms[i].members;
+				
+				exists = 1;
+				break;
+			}
+		}
 		
+		if (exists == 0) {
+			reply.status = FAILURE_NOT_EXISTS;
+		}
+		
+		send(sockfd, (char *)&reply, sizeof(struct Reply), 0);
 	}
-	else if (strncmp(command, "CREATE", 6) == 0) {
+	else if (strncmp(command, "DELETE", 6) == 0) {
 		
 	}
 	else {
 		
 	}
 	
-}
-
-void *run_room(void *r) {
-	int room_num = *(int *)r;
-	int sock = rooms[room_num].sockfd;
 	
-	char buffer[MAX_DATA];
+	printf("Closing temp socket\n");
+	close(sockfd);
 	
-	while (1) {
-		listen(sock, 5);
-		
-		read(sock, buffer, sizeof(buffer));
-		
-		send(sock, buffer, sizeof(buffer), 0);
-	}
+	pthread_detach(pthread_self());
 	
-	active_rooms--;
 }
 
 void create_room(int port, char *name) {
-	int fd;
+	int fd, message_sock;
 	struct sockaddr_in address;
 	int opt = 1;
 	int addrlen = sizeof(address);
@@ -185,10 +191,46 @@ void create_room(int port, char *name) {
 		exit(EXIT_FAILURE);
 	}
 	
+	printf("%d\n", fd);
+	printf("%d\n", port);
+	
 	rooms[active_rooms].sockfd = fd;
 	rooms[active_rooms].port = port;
 	rooms[active_rooms].members = 0;
 	strcpy(rooms[active_rooms].name, name);
 	
 	active_rooms++;
+	
+	char buffer[MAX_DATA];
+	
+	while (1) {
+		if (listen(fd, 5) == -1) {
+			perror("listen()");
+			exit(EXIT_FAILURE);
+		}
+		
+		message_sock = accept(fd, (struct sockaddr*)&address, (socklen_t*)&addrlen);
+		if (message_sock < 0) {
+			perror("accept()");
+			exit(EXIT_FAILURE);
+		}
+			
+		if (read(message_sock, buffer, sizeof(buffer)) < 0) {
+			perror("read()");
+			exit(EXIT_FAILURE);
+		}
+		
+		display_message(buffer);
+			
+		if (send(message_sock, buffer, sizeof(buffer), 0) < 0) {
+			perror("send()");
+			exit(EXIT_FAILURE);
+		}
+		
+		close(message_sock);
+	}
+	
+	active_rooms--;
+	
+	close(fd);
 }

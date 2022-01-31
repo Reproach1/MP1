@@ -7,8 +7,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 #include "interface.h"
 
+int quit_flag = 0;
 
 /*
  * TODO: IMPLEMENT BELOW THREE FUNCTIONS
@@ -16,6 +18,8 @@
 int connect_to(const char *host, const int port);
 struct Reply process_command(const int sockfd, char* command);
 void process_chatmode(const char* host, const int port);
+void* send_messages(void* s);
+void* read_messages(void* s);
 
 int main(int argc, char** argv) 
 {
@@ -40,7 +44,7 @@ int main(int argc, char** argv)
 		display_reply(command, reply);
 		
 		touppercase(command, strlen(command) - 1);
-		if (strncmp(command, "JOIN", 4) == 0) {
+		if (strncmp(command, "JOIN", 4) == 0 && reply.status == SUCCESS) {
 			printf("Now you are in the chatmode\n");
 			process_chatmode(argv[1], reply.port);
 		}
@@ -230,9 +234,55 @@ void process_chatmode(const char* host, const int port)
 	// ------------------------------------------------------------
 	char buffer[MAX_DATA];
 	
+	int readfd = connect_to(host, port);
+	int sendfd = connect_to(host, port);
+	
+	pthread_t send_thread;
+	pthread_create(&send_thread, NULL, send_messages, (void*)&sendfd);
+	
+	pthread_t read_thread;
+	pthread_create(&read_thread, NULL, read_messages, (void*)&readfd);
+	
+	while (1) {
+		if (quit_flag == 1) {
+			break;
+		}
+	}
+	
+	close(readfd);
+	close(sendfd);
+}
+
+void *send_messages(void* s) {
+	int sockfd = *(int *)s;
+	
+	char buffer[MAX_DATA];
+	
 	while (1) {
 		get_message(buffer, MAX_DATA);
-		w
+		
+		if (strncmp(buffer, "quit", 4) == 0) {
+			quit_flag = 1;
+		}
+		else {
+			send(sockfd, buffer, MAX_DATA, 0);
+		}
+	
+		memset(buffer, 0, sizeof(buffer));
+	}
+}
+
+void *read_messages(void* s) {
+	int sockfd = *(int *)s;
+	
+	char buffer[MAX_DATA];
+	
+	while (1) {
+		listen(sockfd, 5);
+		read(sockfd, buffer, MAX_DATA);
+		display_message(buffer);
+		
+		memset(buffer, 0, sizeof(buffer));
 	}
 }
 
