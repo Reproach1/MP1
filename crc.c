@@ -1,5 +1,6 @@
 #include <netdb.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/time.h>
@@ -85,13 +86,14 @@ int connect_to(const char *host, const int port)
 		exit(EXIT_FAILURE);
 	}
 	
+	server_addr.sin_addr.s_addr = inet_addr(host);
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_port = htons(port);
 	
-	if (inet_pton(AF_INET, host, &server_addr.sin_addr) < 0) {
-		perror("IP conversion failed");
-		exit(EXIT_FAILURE);
-	}
+	//if (inet_pton(AF_INET, (char *)host, &(server_addr.sin_addr)) < 0) {
+	//	perror("IP conversion failed");
+	//	exit(EXIT_FAILURE);
+//	}
 	
 	if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
 		perror("connect()");
@@ -247,6 +249,7 @@ void process_chatmode(const char* host, const int port)
 		if (quit_flag == 1) {
 			break;
 		}
+		sleep(.5);
 	}
 	
 	close(readfd);

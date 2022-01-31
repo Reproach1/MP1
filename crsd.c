@@ -10,8 +10,6 @@
 #include <pthread.h>
 #include "interface.h"
 
-#define PORT 6969
-
 struct Room {
 	char name[10];
 	int sockfd;
@@ -21,6 +19,7 @@ struct Room {
 
 struct Room rooms[256];
 int active_rooms = 0;
+int PORT = 0;
 
 
 void *process_command(void *s);
@@ -30,6 +29,7 @@ void create_room(int port, char *name);
 
 int main(int argc, char** argv) 
 {
+	PORT = atoi(argv[1]);
 	int server_fd, new_socket, valread;
 	struct sockaddr_in address;
 	int opt = 1;
@@ -55,16 +55,16 @@ int main(int argc, char** argv)
 		exit(EXIT_FAILURE);
 	}
 	
+	listen(server_fd, 10);
+	
 	while (1) {
-		listen(server_fd, 10);
-		
 		new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen);
 		if (new_socket < 0) {
 			perror("accept()");
 			exit(EXIT_FAILURE);
 		}
 		
-		//printf("new connection\n");
+		printf("new connection\n");
 		
 		pthread_t thread_id;
 		void *s = &new_socket;
@@ -105,6 +105,7 @@ void *process_command(void *s) {
 		int exists = 0;
 		printf("%d\n", active_rooms);
 		for (int i = 0; i < active_rooms; ++i) {
+			printf("%s\n", rooms[i].name);
 			if (strncmp(rooms[i].name, param, 10) == 0) {
 				reply.status = FAILURE_ALREADY_EXISTS;
 				send(sockfd, (char *)&reply, sizeof(struct Reply), 0);
@@ -124,6 +125,11 @@ void *process_command(void *s) {
 			reply.num_member = 0;
 			reply.status = SUCCESS;
 			send(sockfd, (char *)&reply, sizeof(struct Reply), 0);
+			
+			printf("Closing temp socket\n");
+			close(sockfd);
+			
+			pthread_detach(pthread_self());
 			
 			create_room(reply.port, param);
 			
@@ -149,6 +155,9 @@ void *process_command(void *s) {
 		}
 		
 		send(sockfd, (char *)&reply, sizeof(struct Reply), 0);
+		
+		printf("Closing temp socket\n");
+		close(sockfd);
 	}
 	else if (strncmp(command, "DELETE", 6) == 0) {
 		
@@ -158,10 +167,7 @@ void *process_command(void *s) {
 	}
 	
 	
-	printf("Closing temp socket\n");
-	close(sockfd);
 	
-	pthread_detach(pthread_self());
 	
 }
 
@@ -203,11 +209,12 @@ void create_room(int port, char *name) {
 	
 	char buffer[MAX_DATA];
 	
+	if (listen(fd, 5) == -1) {
+		perror("listen()");
+		exit(EXIT_FAILURE);
+	}
+	
 	while (1) {
-		if (listen(fd, 5) == -1) {
-			perror("listen()");
-			exit(EXIT_FAILURE);
-		}
 		
 		message_sock = accept(fd, (struct sockaddr*)&address, (socklen_t*)&addrlen);
 		if (message_sock < 0) {
